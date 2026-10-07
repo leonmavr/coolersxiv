@@ -1,0 +1,131 @@
+#!/bin/sh
+
+# Example for $XDG_CONFIG_HOME/sxiv/exec/url-handler
+# Called by sxiv(1) for every URL passed with the -u option, and for every
+# ordinary argument that looks like a URL (scheme followed by "://"). One URL
+# per call; several URLs result in several calls, but more than one URL per
+# call is also accepted. Download the URL(s) and print the path of each
+# downloaded file on stdout, one path per line. sxiv then opens those local
+# files. Anything this script writes to stderr is passed through to the user.
+#
+# Because the downloads are plain files, animated GIFs and every other format
+# sxiv supports work out of the box.
+#
+# Note: URLs reach sxiv as a single argument with no shell involved, so
+# characters like & : ( ) # are safe here. Quote them on the sxiv command line
+# (e.g. sxiv -u 'https://host/img.jpg?a=1&b=2') so your shell does not treat
+# them specially.
+
+[ "$#" -gt 0 ] || exit 1
+
+# Keep downloads in a well-known temporary directory so they are easy to find
+# and clean up. Override TMPDIR to change the location.
+tmpdir="${TMPDIR:-/tmp}/sxiv-url"
+mkdir -p -- "$tmpdir" || exit 1
+
+# Map an image MIME type to a file extension. An empty result means "not an
+# image we know how to name".
+mime_ext() {
+	case "${1%%;*}" in
+		image/jpeg)              echo jpg  ;;
+		image/png)               echo png  ;;
+		image/gif)               echo gif  ;;
+		image/webp)              echo webp ;;
+		image/bmp)               echo bmp  ;;
+		image/tiff)              echo tiff ;;
+		image/x-portable-pixmap) echo ppm  ;;
+		image/x-portable-graymap) echo pgm ;;
+		image/x-xbitmap)         echo xbm  ;;
+		image/x-xpixmap)         echo xpm  ;;
+		image/x-icon)            echo ico  ;;
+		image/vnd.microsoft.icon) echo ico ;;
+		image/svg+xml)           echo svg  ;;
+		image/avif)              echo avif ;;
+		image/jxl)               echo jxl  ;;
+		image/heic)              echo heic ;;
+		*)                       echo ""   ;;
+	esac
+}
+
+# True if the given extension (without dot) is a plausible image extension.
+is_image_ext() {
+	case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+		jpg|jpeg|jpe|png|gif|webp|bmp|tif|tiff|ppm|pgm|pbm|pnm|xpm|xbm|ico|svg|svgz|avif|jxl|heic|heif) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+for url in "$@"; do
+	# Derive a file name from the URL, dropping any query string/fragment.
+	name="${url%%\#*}"
+	name="${name%%\?*}"
+	name="${name##*/}"
+	[ -n "$name" ] || name="index"
+
+	# Split off the extension: it must stay last so that viewers pick the
+	# right decoder (Imlib2, for instance, chooses its loader by extension).
+	case "$name" in
+		*.*) stem="${name%.*}"; ext=".${name##*.}" ;;
+		*)   stem="$name";      ext="" ;;
+	esac
+
+	# Download to a scratch file first, so we can inspect the result before
+	# deciding on a name.
+	tmp="$tmpdir/.download.$$"
+	rm -f -- "$tmp"
+	ctype=""
+	if command -v curl >/dev/null 2>&1; then
+		ctype=$(curl -L --fail --silent --show-error -o "$tmp" \
+		             -w '%{content_type}' "$url") || { rm -f -- "$tmp"; continue; }
+	elif command -v wget >/dev/null 2>&1; then
+		wget -q -O "$tmp" "$url" || { rm -f -- "$tmp"; continue; }
+	else
+		echo "url-handler: neither curl nor wget found" >&2
+		exit 1
+	fi
+	[ -s "$tmp" ] || { rm -f -- "$tmp"; continue; }
+
+	# Determine the real content type. Servers are frequently wrong (a JPEG
+	# served as application/octet-stream is common), so when the reported type
+	# is not an image, sniff the actual bytes as a second opinion.
+	case "$ctype" in
+		image/*) ;;
+		*)
+			if command -v file >/dev/null 2>&1; then
+				sniff=$(file -b --mime-type -- "$tmp" 2>/dev/null)
+				[ -n "$sniff" ] && ctype="$sniff"
+			fi
+			;;
+	esac
+
+	# Refuse anything that is not an image, so the user gets a useful message
+	# instead of sxiv silently failing to open, say, an HTML page.
+	case "$ctype" in
+		image/*) ;;
+		*)
+			echo "url-handler: not an image (${ctype:-unknown type}): $url" >&2
+			rm -f -- "$tmp"
+			continue
+			;;
+	esac
+
+	# If the URL did not carry a usable image extension, take one from the
+	# content type. This keeps extension-less/CDN URLs working and lets the
+	# viewer pick the right decoder quickly.
+	if ! is_image_ext "${ext#.}"; then
+		mimeext=$(mime_ext "$ctype")
+		[ -n "$mimeext" ] && ext=".$mimeext"
+	fi
+
+	dest="$tmpdir/$stem$ext"
+	# If a file of that name already exists, disambiguate using a checksum of
+	# the full URL, inserted before the extension. This is stable, so
+	# re-downloading the same URL reuses the same file, while two distinct URLs
+	# that share a base name do not clobber each other.
+	if [ -e "$dest" ]; then
+		dest="$tmpdir/$stem.$(printf '%s' "$url" | cksum | cut -d' ' -f1)$ext"
+	fi
+
+	mv -f -- "$tmp" "$dest" || { rm -f -- "$tmp"; continue; }
+	printf '%s\n' "$dest"
+done

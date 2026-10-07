@@ -21,6 +21,7 @@
 #include "config.h"
 #include "version.h"
 
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -28,11 +29,39 @@
 opt_t _options;
 const opt_t *options = (const opt_t*) &_options;
 
+/*
+ * True if s looks like "scheme://..." and is therefore a URL rather than a
+ * local path. Only the scheme is required to be well-formed; everything after
+ * "://" is left to the url handler.
+ */
+static bool is_url(const char *s)
+{
+	const char *p;
+
+	if (s == NULL || !isalpha((unsigned char) *s))
+		return false;
+	for (p = s + 1; *p != '\0'; p++) {
+		if (*p == ':')
+			return p[1] == '/' && p[2] == '/';
+		if (!(isalnum((unsigned char) *p) ||
+		      *p == '+' || *p == '-' || *p == '.'))
+			return false;
+	}
+	return false;
+}
+
+/* Remember a URL for later download by the external url handler. */
+static void add_url(const char *url)
+{
+	_options.urls = erealloc(_options.urls, (_options.urlcnt + 1) * sizeof(char*));
+	_options.urls[_options.urlcnt++] = estrdup(url);
+}
+
 void print_usage(void)
 {
 	printf("usage: sxiv [-bcfhiopqrRtvZ] [-A FRAMERATE] [-e WID] [-G GAMMA] "
-	       "[-g GEOMETRY] [-N NAME] [-n NUM] [-S DELAY] [-s MODE] [-z ZOOM] "
-	       "FILES...\n");
+	       "[-g GEOMETRY] [-N NAME] [-n NUM] [-S DELAY] [-s MODE] [-u URL]... "
+	       "[-z ZOOM] FILES...\n");
 }
 
 void print_version(void)
@@ -42,7 +71,7 @@ void print_version(void)
 
 void parse_options(int argc, char **argv)
 {
-	int n, opt;
+	int i, j, n, opt;
 	char *end, *s;
 	const char *scalemodes = "dfFwh";
 
@@ -54,6 +83,9 @@ void parse_options(int argc, char **argv)
 	_options.recursive = false;
 	_options.reverse_sort = false;
 	_options.startnum = 0;
+
+	_options.urls = NULL;
+	_options.urlcnt = 0;
 
 	_options.scalemode = SCALE_DOWN;
 	_options.zoom = 1.0;
@@ -73,7 +105,7 @@ void parse_options(int argc, char **argv)
 	_options.clean_cache = false;
 	_options.private_mode = false;
 
-	while ((opt = getopt(argc, argv, "A:bce:fG:g:hin:N:opqRrS:s:tvZz:")) != -1) {
+	while ((opt = getopt(argc, argv, "A:bce:fG:g:hin:N:opqRrS:s:tu:vZz:")) != -1) {
 		switch (opt) {
 			case '?':
 				print_usage();
@@ -153,6 +185,10 @@ void parse_options(int argc, char **argv)
 			case 't':
 				_options.thumb_mode = true;
 				break;
+			case 'u':
+				/* Force the next argument to be treated as a URL. */
+				add_url(optarg);
+				break;
 			case 'v':
 				print_version();
 				exit(EXIT_SUCCESS);
@@ -178,4 +214,14 @@ void parse_options(int argc, char **argv)
 		_options.filecnt--;
 		_options.from_stdin = true;
 	}
+
+	/* Positional arguments that look like URLs are routed to the url handler,
+	 * so "sxiv URL [URL...]" and mixed file/URL lists work without -u. */
+	for (i = 0, j = 0; i < _options.filecnt; i++) {
+		if (is_url(_options.filenames[i]))
+			add_url(_options.filenames[i]);
+		else
+			_options.filenames[j++] = _options.filenames[i];
+	}
+	_options.filecnt = j;
 }

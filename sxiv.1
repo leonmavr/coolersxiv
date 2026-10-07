@@ -20,6 +20,8 @@ sxiv \- Simple X Image Viewer
 .IR DELAY ]
 .RB [ \-s
 .IR MODE ]
+.RB [ \-u
+.IR URL ]...
 .RB [ \-z
 .IR ZOOM ]
 .IR FILE ...
@@ -105,6 +107,25 @@ Set scale mode according to MODE character. Supported modes are: [d]own,
 .TP
 .B \-t
 Start in thumbnail mode.
+.TP
+.BI "\-u " URL
+View the image located at URL, using the external url-handler (see section
+EXTERNAL URL HANDLER). This option may be given more than once. It is usually
+not needed: any argument that looks like a URL, i.e. a scheme followed by
+"://" such as
+.BR https:// ,
+is detected and treated as a URL automatically, whether it appears before,
+between or after other files. Use
+.B \-u
+to force a string that does not look like a URL to be passed to the handler.
+Any format sxiv supports works, including animated GIFs.
+.P
+URLs are passed to sxiv verbatim, so characters like
+.B &
+are only special to your shell. Quote the URL (for example
+.BR "'https://host/img.jpg?a=1&b=2'" )
+to stop the shell from splitting the command line or running it in the
+background.
 .TP
 .B \-v
 Print version information to standard output and exit.
@@ -441,6 +462,31 @@ keysym as listed in /usr/include/X11/keysymdef.h without the "XK_" prefix.
 
 There is also an example script installed together with sxiv as
 .IR PREFIX/share/sxiv/exec/key-handler .
+.SH EXTERNAL URL HANDLER
+Images can be viewed directly from a URL using the
+.I \-u
+option. The URL is passed to a handler program located in
+.IR $XDG_CONFIG_HOME/sxiv/exec/url-handler ,
+which is responsible for downloading the remote resource and printing the path
+of each downloaded file on stdout, one path per line. sxiv reads those paths and
+opens the local files, so any format sxiv supports (including animated GIFs)
+works automatically. The handler is invoked once per
+.I \-u
+option, and its standard error is passed through to the user.
+
+A trivial handler could download with curl or wget into a temporary directory,
+for example:
+.P
+.RS
+.EX
+#!/bin/sh
+tmp=$(mktemp -d)
+curl -sL -o "$tmp/image" "$1" && printf '%s\\n' "$tmp/image"
+.EE
+.RE
+.P
+There is also an example script installed together with sxiv as
+.IR PREFIX/share/sxiv/exec/url-handler .
 .SH THUMBNAIL CACHING
 sxiv stores all thumbnails under
 .IR $XDG_CACHE_HOME/sxiv/ .

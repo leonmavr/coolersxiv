@@ -268,6 +268,10 @@ struct opt {
 	int filecnt;
 	int startnum;
 
+	/* urls: */
+	char **urls;
+	int urlcnt;
+
 	/* image: */
 	scalemode_t scalemode;
 	float zoom;

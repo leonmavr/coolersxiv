@@ -87,6 +87,9 @@ struct {
 	bool warned;
 } keyhandler;
 
+/* external helper that downloads URLs and prints local paths (see -u) */
+extcmd_t urlhandler;
+
 timeout_t timeouts[] = {
 	{ { 0, 0 }, false, redraw       },
 	{ { 0, 0 }, false, reset_cursor },
@@ -885,6 +888,65 @@ int run_xrdb(void) {
     return status;
 }
 
+/*
+ * Download each URL given with -u by invoking the external url-handler
+ * (see $XDG_CONFIG_HOME/sxiv/exec/url-handler). The handler is expected to
+ * fetch the remote resource and print the path of each downloaded file on
+ * stdout, one per line. Those paths are then added to the file list.
+ */
+void load_urls(void)
+{
+	int i, pfd[2];
+	pid_t pid;
+	FILE *pfs;
+	char *line = NULL;
+	size_t n = 0;
+	ssize_t len;
+
+	if (options->urlcnt == 0)
+		return;
+
+	if (urlhandler.cmd == NULL || urlhandler.err != 0) {
+		error(EXIT_FAILURE, urlhandler.err, "Cannot run url handler: %s",
+		      urlhandler.cmd != NULL ? urlhandler.cmd : "url-handler");
+	}
+
+	for (i = 0; i < options->urlcnt; i++) {
+		if (pipe(pfd) < 0) {
+			error(0, errno, "pipe");
+			continue;
+		}
+		if ((pid = fork()) == 0) {
+			close(pfd[0]);
+			dup2(pfd[1], 1);
+			close(pfd[1]);
+			execl(urlhandler.cmd, urlhandler.cmd, options->urls[i], NULL);
+			error(EXIT_FAILURE, errno, "exec: %s", urlhandler.cmd);
+		}
+		close(pfd[1]);
+		if (pid < 0) {
+			error(0, errno, "fork");
+			close(pfd[0]);
+			continue;
+		}
+		if ((pfs = fdopen(pfd[0], "r")) == NULL) {
+			error(0, errno, "open pipe");
+			close(pfd[0]);
+			while (waitpid(pid, NULL, 0) == -1 && errno == EINTR);
+			continue;
+		}
+		while ((len = getline(&line, &n, pfs)) > 0) {
+			if (line[len-1] == '\n')
+				line[len-1] = '\0';
+			if (line[0] != '\0')
+				check_add_file(line, false);
+		}
+		fclose(pfs);
+		while (waitpid(pid, NULL, 0) == -1 && errno == EINTR);
+	}
+	free(line);
+}
+
 int main(int argc, char **argv)
 {
 	int i, j, start;
@@ -909,12 +971,12 @@ int main(int argc, char **argv)
 		exit(EXIT_SUCCESS);
 	}
 
-	if (options->filecnt == 0 && !options->from_stdin) {
+	if (options->filecnt == 0 && !options->from_stdin && options->urlcnt == 0) {
 		print_usage();
 		exit(EXIT_FAILURE);
 	}
 
-	if (options->recursive || options->from_stdin)
+	if (options->recursive || options->from_stdin || options->urlcnt > 0)
 		filecnt = 1024;
 	else
 		filecnt = options->filecnt;
@@ -967,12 +1029,6 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (fileidx == 0)
-		error(EXIT_FAILURE, 0, "No valid image file given, aborting");
-
-	filecnt = fileidx;
-	fileidx = options->startnum < filecnt ? options->startnum : 0;
-
 	for (i = 0; i < ARRLEN(buttons); i++) {
 		if (buttons[i].cmd == i_cursor_navigate) {
 			imgcursor[0] = CURSOR_LEFT;
@@ -990,8 +1046,8 @@ int main(int argc, char **argv)
 		dsuffix = "/.config";
 	}
 	if (homedir != NULL) {
-		extcmd_t *cmd[] = { &info.f, &keyhandler.f };
-		const char *name[] = { "image-info", "key-handler" };
+		extcmd_t *cmd[] = { &info.f, &keyhandler.f, &urlhandler };
+		const char *name[] = { "image-info", "key-handler", "url-handler" };
 
 		for (i = 0; i < ARRLEN(cmd); i++) {
 			n = strlen(homedir) + strlen(dsuffix) + strlen(name[i]) + 12;
@@ -1004,6 +1060,14 @@ int main(int argc, char **argv)
 		error(0, 0, "Exec directory not found");
 	}
 	info.fd = -1;
+
+	load_urls();
+
+	if (fileidx == 0)
+		error(EXIT_FAILURE, 0, "No valid image file given, aborting");
+
+	filecnt = fileidx;
+	fileidx = options->startnum < filecnt ? options->startnum : 0;
 
 	if (options->thumb_mode) {
 		mode = MODE_THUMB;
