@@ -390,6 +390,10 @@ Color of the window foreground and bar background
 .B font
 Name of Xft bar font
 .TP
+.B barHeight
+Height of the status bar in pixels. If omitted, the height is calculated from
+the selected font.
+.TP
 Please see xrdb(1) on how to change them.
 .SH STATUS BAR
 The information displayed on the left side of the status bar can be replaced
@@ -407,9 +411,12 @@ located in
 .IR $XDG_CONFIG_HOME/sxiv/exec/key-handler .
 The handler is invoked by pressing
 .BR Ctrl-x .
-The next key combo is passed as its first argument. Passed via stdin are the
-images to act upon, one path per line: all marked images, if in thumbnail mode
-and at least one image has been marked, otherwise the current image.
+The next key combo is passed as its first argument. Keys that do not match a
+built-in sxiv binding are also forwarded directly to the handler, so pressing
+.BR Ctrl-x is only needed when the key should be treated as a prefix.
+Passed via stdin are the images to act upon, one path per line: all marked
+images, if in thumbnail mode and at least one image has been marked, otherwise
+the current image.
 sxiv(1) will block until the handler terminates. It then checks which images
 have been modified and reloads them.
 
