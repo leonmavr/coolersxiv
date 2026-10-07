@@ -152,6 +152,9 @@ void win_init(win_t *win)
 	INIT_ATOM_(_NET_WM_ICON);
 	INIT_ATOM_(_NET_WM_STATE);
 	INIT_ATOM_(_NET_WM_STATE_FULLSCREEN);
+
+	if (db != None)
+		XrmDestroyDatabase(db);
 }
 
 void win_open(win_t *win)
@@ -290,6 +293,9 @@ CLEANUP void win_close(win_t *win)
 		XFreeCursor(win->env.dpy, cursors[i].icon);
 
 	XFreeGC(win->env.dpy, gc);
+
+	if (font != NULL)
+		XftFontClose(win->env.dpy, font);
 
 	XDestroyWindow(win->env.dpy, win->xwin);
 	XCloseDisplay(win->env.dpy);
