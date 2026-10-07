@@ -53,6 +53,11 @@ static int barheight;
 
 Atom atoms[ATOM_COUNT];
 
+static unsigned int bar_total(win_t *win)
+{
+	return win->bar.h + win->bar.h2;
+}
+
 void win_init_font(const win_env_t *e, const char *fontstr)
 {
 	if ((font = XftFontOpenName(e->dpy, e->scr, fontstr)) == NULL)
@@ -139,12 +144,16 @@ void win_init(win_t *win)
 
 	win->bar.l.size = BAR_L_LEN;
 	win->bar.r.size = BAR_R_LEN;
+	win->bar.l2.size = BAR_L_LEN;
 	/* 3 padding bytes needed by utf8_decode */
 	win->bar.l.buf = emalloc(win->bar.l.size + 3);
 	win->bar.l.buf[0] = '\0';
 	win->bar.r.buf = emalloc(win->bar.r.size + 3);
 	win->bar.r.buf[0] = '\0';
+	win->bar.l2.buf = emalloc(win->bar.l2.size + 3);
+	win->bar.l2.buf[0] = '\0';
 	win->bar.h = options->hide_bar ? 0 : barheight;
+	win->bar.h2 = 0;
 
 	INIT_ATOM_(WM_DELETE_WINDOW);
 	INIT_ATOM_(_NET_WM_NAME);
@@ -268,7 +277,7 @@ void win_open(win_t *win)
 	sizehints.y = win->y;
 	XSetWMNormalHints(win->env.dpy, win->xwin, &sizehints);
 
-	win->h_image -= win->bar.h;
+	win->h_image -= bar_total(win);
 
 	win->buf.w = e->scrw;
 	win->buf.h = e->scrh;
@@ -305,12 +314,12 @@ bool win_configure(win_t *win, XConfigureEvent *c)
 {
 	bool changed;
 
-	changed = win->w_image != c->width || win->h_image + win->bar.h != c->height;
+	changed = win->w_image != c->width || win->h_image + bar_total(win) != c->height;
 
 	win->x = c->x;
 	win->y = c->y;
 	win->w_image = c->width;
-	win->h_image = c->height - win->bar.h;
+	win->h_image = c->height - bar_total(win);
 	win->bw = c->border_width;
 
 	return changed;
@@ -346,16 +355,27 @@ void win_toggle_bar(win_t *win)
 	}
 }
 
+void win_toggle_bar2(win_t *win)
+{
+	if (win->bar.h2 != 0) {
+		win->h_image += win->bar.h2;
+		win->bar.h2 = 0;
+	} else {
+		win->bar.h2 = barheight;
+		win->h_image -= win->bar.h2;
+	}
+}
+
 void win_clear(win_t *win)
 {
 	win_env_t *e;
 
 	e = &win->env;
 
-	if (win->w_image > win->buf.w || win->h_image + win->bar.h > win->buf.h) {
+	if (win->w_image > win->buf.w || win->h_image + bar_total(win) > win->buf.h) {
 		XFreePixmap(e->dpy, win->buf.pm);
 		win->buf.w = MAX(win->buf.w, win->w_image);
-		win->buf.h = MAX(win->buf.h, win->h_image + win->bar.h);
+		win->buf.h = MAX(win->buf.h, win->h_image + bar_total(win));
 		win->buf.pm = XCreatePixmap(e->dpy, win->xwin,
 		                            win->buf.w, win->buf.h, e->depth);
 	}
@@ -422,49 +442,62 @@ int win_draw_text(win_t *win, XftDraw *d, const XftColor *color, int x, int y,
 	return tw;
 }
 
-void win_draw_bar(win_t *win)
+static void win_draw_bar_content(win_t *win, XftDraw *d, win_bar_t *l,
+                                 win_bar_t *r, int y)
 {
-	int len, x, y, w, tw;
-	win_env_t *e;
-	win_bar_t *l, *r;
-	XftDraw *d;
+	int len, x, w, tw;
 
-	if ((l = &win->bar.l)->buf == NULL || (r = &win->bar.r)->buf == NULL)
-		return;
-
-	e = &win->env;
-	y = win->h_image + font->ascent + V_TEXT_PAD;
 	w = win->w_image - 2*H_TEXT_PAD;
-	d = XftDrawCreate(e->dpy, win->buf.pm, DefaultVisual(e->dpy, e->scr),
-	                  DefaultColormap(e->dpy, e->scr));
 
-	/* Draw an opaque bar background. */
-	XSetForeground(e->dpy, gc, win->fg.pixel);
-	XFillRectangle(e->dpy, win->buf.pm, gc, 0, win->h_image, win->w_image, win->bar.h);
-
-	XSetForeground(e->dpy, gc, win->bg.pixel);
-	XSetBackground(e->dpy, gc, win->fg.pixel);
-
-	if ((len = strlen(r->buf)) > 0) {
-		if ((tw = TEXTWIDTH(win, r->buf, len)) > w) {
-			XftDrawDestroy(d);
-			return;
-		}
+	if (r != NULL && (len = strlen(r->buf)) > 0) {
+		if ((tw = TEXTWIDTH(win, r->buf, len)) > w)
+			return; /* right-hand part too wide, skip this row */
 		x = win->w_image - tw - H_TEXT_PAD;
 		w -= tw;
 		win_draw_text(win, d, &win->bg, x, y, r->buf, len, tw);
 	}
-	if ((len = strlen(l->buf)) > 0) {
+	if (l != NULL && (len = strlen(l->buf)) > 0) {
 		x = H_TEXT_PAD;
 		w -= 2 * H_TEXT_PAD; /* gap between left and right parts */
 		win_draw_text(win, d, &win->bg, x, y, l->buf, len, w);
 	}
+}
+
+void win_draw_bar(win_t *win)
+{
+	int y;
+	win_env_t *e;
+	XftDraw *d;
+
+	if (win->bar.l.buf == NULL || win->bar.r.buf == NULL || bar_total(win) == 0)
+		return;
+
+	e = &win->env;
+	d = XftDrawCreate(e->dpy, win->buf.pm, DefaultVisual(e->dpy, e->scr),
+	                  DefaultColormap(e->dpy, e->scr));
+
+	/* Draw an opaque bar background over all bar rows. */
+	XSetForeground(e->dpy, gc, win->fg.pixel);
+	XFillRectangle(e->dpy, win->buf.pm, gc, 0, win->h_image, win->w_image,
+	               bar_total(win));
+
+	XSetForeground(e->dpy, gc, win->bg.pixel);
+	XSetBackground(e->dpy, gc, win->fg.pixel);
+
+	y = win->h_image + font->ascent + V_TEXT_PAD;
+	win_draw_bar_content(win, d, &win->bar.l, &win->bar.r, y);
+
+	if (win->bar.h2 > 0) {
+		y += win->bar.h; /* second bar sits right below the first */
+		win_draw_bar_content(win, d, &win->bar.l2, NULL, y);
+	}
+
 	XftDrawDestroy(d);
 }
 
 void win_draw(win_t *win)
 {
-	if (win->bar.h > 0)
+	if (bar_total(win) > 0)
 		win_draw_bar(win);
 
 	XSetWindowBackgroundPixmap(win->env.dpy, win->xwin, win->buf.pm);

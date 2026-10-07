@@ -51,6 +51,7 @@ void reset_cursor(void);
 void animate(void);
 void slideshow(void);
 void clear_resize(void);
+void update_title(void);
 
 appmode_t mode;
 arl_t arl;
@@ -357,6 +358,16 @@ void update_info(void)
 	unsigned int i, fn, fw;
 	const char * mark;
 	win_bar_t *l = &win.bar.l, *r = &win.bar.r;
+	win_bar_t *l2 = &win.bar.l2;
+
+	/* second bar: image type | dimensions | zoom level */
+	if (win.bar.h2 > 0) {
+		l2->p = l2->buf;
+		l2->buf[0] = '\0';
+		if (mode == MODE_IMAGE)
+			bar_put(l2, "%s | %dx%d | %d%%", img.fmt, img.w, img.h,
+			        (int) (img.zoom * 100.0));
+	}
 
 	/* update bar contents */
 	if (win.bar.h == 0)
@@ -402,6 +413,22 @@ int ptr_third_x(void)
 	return MAX(0, MIN(2, (x / (win.w_image * 0.33))));
 }
 
+void update_title(void)
+{
+	static char last[512];
+	char title[512];
+
+	if (win.xwin == None || filecnt == 0)
+		return;
+	snprintf(title, sizeof(title), "%s (%d/%d)",
+	         files[fileidx].name, fileidx + 1, filecnt);
+	if (!STREQ(title, last)) {
+		win_set_title(&win, title);
+		strncpy(last, title, sizeof(last) - 1);
+		last[sizeof(last) - 1] = '\0';
+	}
+}
+
 void redraw(void)
 {
 	int t;
@@ -417,6 +444,7 @@ void redraw(void)
 	} else {
 		tns_render(&tns);
 	}
+	update_title();
 	update_info();
 	win_draw(&win);
 	reset_timeout(redraw);
@@ -859,7 +887,7 @@ int run_xrdb(void) {
 
 int main(int argc, char **argv)
 {
-	int i, start;
+	int i, j, start;
 	size_t n;
 	ssize_t len;
 	char *filename;
@@ -926,8 +954,16 @@ int main(int argc, char **argv)
 				free((void*) filename);
 			}
 			r_closedir(&dir);
-			if (fileidx - start > 1)
+			if (fileidx - start > 1) {
 				qsort(files + start, fileidx - start, sizeof(fileinfo_t), fncmp);
+				if (options->reverse_sort) {
+					for (i = start, j = fileidx - 1; i < j; i++, j--) {
+						fileinfo_t tmp = files[i];
+						files[i] = files[j];
+						files[j] = tmp;
+					}
+				}
+			}
 		}
 	}
 

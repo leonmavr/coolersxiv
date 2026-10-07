@@ -26,6 +26,11 @@ welcome but there is no guarantee that they will be incorporated.
 * More zoom and pan levels (me)
 * Fill scale mode with `-F` (@XPhyro)
 * Customizable checkerboard background
+* Per-image window title
+* Secondary status bar (image type, dimensions, zoom) toggled with `B`
+* Reverse directory sorting with `-R`
+* Left-drag to pan zoomed images
+* `-o` outputs the current image when nothing is marked
 
 
 # Screenshots
@@ -104,8 +109,12 @@ You can add your sxiv configuration options in youre `~/.Xresources` file as fol
 ```
 Sxiv.background: #000000
 Sxiv.foreground: #00C0FF
-Sxiv.font: Hack-9;
+Sxiv.font: Hack-12
+Sxiv.barHeight: 30
 ```
+
+`Sxiv.barHeight` is optional and sets the bottom status bar height in pixels.
+If it is omitted, sxiv calculates the height from the selected font.
 
 Then, execute `xrdb ~/.Xresources` for the changes to take place.
 

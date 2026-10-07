@@ -21,6 +21,7 @@
 #include "config.h"
 
 #include <errno.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -54,6 +55,8 @@ void img_init(img_t *img, win_t *win)
 	imlib_context_set_colormap(win->env.cmap);
 
 	img->im = NULL;
+	img->w = img->h = 0;
+	img->fmt[0] = '\0';
 	img->win = win;
 	img->scalemode = options->scalemode;
 	img->zoom = options->zoom;
@@ -318,6 +321,7 @@ Imlib_Image img_open(const fileinfo_t *file)
 bool img_load(img_t *img, const fileinfo_t *file)
 {
 	const char *fmt;
+	int i;
 
 	if ((img->im = img_open(file)) == NULL)
 		return false;
@@ -329,10 +333,15 @@ bool img_load(img_t *img, const fileinfo_t *file)
 #endif
 
 	if ((fmt = imlib_image_format()) != NULL) {
+		for (i = 0; fmt[i] != '\0' && i < (int) sizeof(img->fmt) - 1; i++)
+			img->fmt[i] = toupper((unsigned char) fmt[i]);
+		img->fmt[i] = '\0';
 #if HAVE_GIFLIB
 		if (STREQ(fmt, "gif"))
 			img_load_gif(img, file);
 #endif
+	} else {
+		img->fmt[0] = '\0';
 	}
 	img->w = imlib_image_get_width();
 	img->h = imlib_image_get_height();

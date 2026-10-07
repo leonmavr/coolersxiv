@@ -211,6 +211,7 @@ struct img {
 	Imlib_Image im;
 	int w;
 	int h;
+	char fmt[16];
 
 	win_t *win;
 	float x;
@@ -263,6 +264,7 @@ struct opt {
 	bool from_stdin;
 	bool to_stdout;
 	bool recursive;
+	bool reverse_sort;
 	int filecnt;
 	int startnum;
 
@@ -428,8 +430,10 @@ struct win {
 
 	struct {
 		unsigned int h;
+		unsigned int h2;
 		win_bar_t l;
 		win_bar_t r;
+		win_bar_t l2;
 	} bar;
 };
 
@@ -441,6 +445,7 @@ CLEANUP void win_close(win_t*);
 bool win_configure(win_t*, XConfigureEvent*);
 void win_toggle_fullscreen(win_t*);
 void win_toggle_bar(win_t*);
+void win_toggle_bar2(win_t*);
 void win_clear(win_t*);
 void win_draw(win_t*);
 void win_draw_rect(win_t*, int, int, int, int, bool, int, unsigned long);

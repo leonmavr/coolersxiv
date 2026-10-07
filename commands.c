@@ -37,6 +37,7 @@ void animate(void);
 void slideshow(void);
 void set_timeout(timeout_f, int, bool);
 void reset_timeout(timeout_f);
+bool ci_drag(arg_t);
 
 extern appmode_t mode;
 extern img_t img;
@@ -56,10 +57,15 @@ bool cg_quit(arg_t _)
 {
 	unsigned int i;
 
-	if (options->to_stdout && markcnt > 0) {
-		for (i = 0; i < filecnt; i++) {
-			if (files[i].flags & FF_MARK)
-				printf("%s\n", files[i].name);
+	if (options->to_stdout) {
+		if (markcnt > 0) {
+			for (i = 0; i < filecnt; i++) {
+				if (files[i].flags & FF_MARK)
+					printf("%s\n", files[i].name);
+			}
+		} else {
+			/* no marks: emit the current image */
+			printf("%s\n", files[fileidx].name);
 		}
 	}
 	exit(EXIT_SUCCESS);
@@ -109,6 +115,16 @@ bool cg_toggle_bar(arg_t _)
 	} else {
 		tns.dirty = true;
 	}
+	return true;
+}
+
+bool cg_toggle_bar2(arg_t _)
+{
+	win_toggle_bar2(&win);
+	if (mode == MODE_IMAGE)
+		img.checkpan = img.dirty = true;
+	else
+		tns.dirty = true;
 	return true;
 }
 
@@ -280,6 +296,13 @@ bool ci_navigate(arg_t n)
 	if (n >= filecnt)
 		n = filecnt - 1;
 
+	/* If the image is larger than the window, a left-drag pans it;
+	 * otherwise a left click navigates by screen thirds. */
+	if ((int) (img.w * img.zoom) > (int) win.w_image ||
+	    (int) (img.h * img.zoom) > (int) win.h_image)
+	{
+		return ci_drag(DRAG_RELATIVE);
+	}
 	if (n != fileidx) {
 		load_image(n);
 		return true;
