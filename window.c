@@ -440,8 +440,10 @@ void win_draw_bar(win_t *win)
 	XSetBackground(e->dpy, gc, win->fg.pixel);
 
 	if ((len = strlen(r->buf)) > 0) {
-		if ((tw = TEXTWIDTH(win, r->buf, len)) > w)
+		if ((tw = TEXTWIDTH(win, r->buf, len)) > w) {
+			XftDrawDestroy(d);
 			return;
+		}
 		x = win->w_image - tw - H_TEXT_PAD;
 		w -= tw;
 		win_draw_text(win, d, &win->bg, x, y, r->buf, len, tw);
