@@ -413,7 +413,6 @@ struct win {
 	/* Checkerboard colors (primary/secondary) */
 	XftColor cb1;
 	XftColor cb2;
-	int bar_alpha; /* 0..255 alpha used to tint the bar */
 
 	int x;
 	int y;

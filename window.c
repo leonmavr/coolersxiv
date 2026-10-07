@@ -92,11 +92,12 @@ const char* win_res(XrmDatabase db, const char *name, const char *def)
 void win_init(win_t *win)
 {
 	win_env_t *e;
-	const char *bg, *fg, *f;
+	const char *bg, *fg, *f, *bar_height_str;
 	/* background checkerboard colors */
 	const char *cb1, *cb2;
-	char *res_man;
+	char *res_man, *end;
 	XrmDatabase db;
+	long bar_height;
 
 	memset(win, 0, sizeof(win_t));
 
@@ -121,6 +122,11 @@ void win_init(win_t *win)
 	f = win_res(db, RES_CLASS ".font", "monospace-12");
 	win_init_font(e, f);
 
+	bar_height_str = win_res(db, RES_CLASS ".barHeight", "");
+	bar_height = strtol(bar_height_str, &end, 10);
+	if (bar_height_str[0] != '\0' && *end == '\0' && bar_height > 0)
+		barheight = (int)bar_height;
+
 	bg = win_res(db, RES_CLASS ".background", "white");
 	fg = win_res(db, RES_CLASS ".foreground", "black");
 	/* Checker colors: default to background and white */
@@ -130,12 +136,6 @@ void win_init(win_t *win)
 	win_alloc_color(e, fg, &win->fg);
 	win_alloc_color(e, cb1, &win->cb1);
 	win_alloc_color(e, cb2, &win->cb2);
-	const char *bar_alpha_str;
-	/* Bar transparency (0..255), default slightly transparent */
-	bar_alpha_str = win_res(db, RES_CLASS ".barAlpha", "220");
-	win->bar_alpha = (int) strtol(bar_alpha_str, NULL, 0);
-	if (win->bar_alpha < 0) win->bar_alpha = 0;
-	if (win->bar_alpha > 255) win->bar_alpha = 255;
 
 	win->bar.l.size = BAR_L_LEN;
 	win->bar.r.size = BAR_R_LEN;
@@ -432,26 +432,9 @@ void win_draw_bar(win_t *win)
 	d = XftDrawCreate(e->dpy, win->buf.pm, DefaultVisual(e->dpy, e->scr),
 	                  DefaultColormap(e->dpy, e->scr));
 
-	/* Draw a semi-transparent bar overlay */
-	if (win->bar_alpha >= 255) {
-		XSetForeground(e->dpy, gc, win->fg.pixel);
-		XFillRectangle(e->dpy, win->buf.pm, gc, 0, win->h_image, win->w_image, win->bar.h);
-	} else {
-		int r8 = win->fg.color.red >> 8;
-		int g8 = win->fg.color.green >> 8;
-		int b8 = win->fg.color.blue >> 8;
-		Imlib_Image bar = imlib_create_image(win->w_image, win->bar.h);
-		if (bar != NULL) {
-			imlib_context_set_image(bar);
-			imlib_image_set_has_alpha(1);
-			imlib_context_set_color(r8, g8, b8, win->bar_alpha);
-			imlib_image_fill_rectangle(0, 0, win->w_image, win->bar.h);
-			imlib_context_set_drawable(win->buf.pm);
-			imlib_context_set_blend(1);
-			imlib_render_image_on_drawable(0, win->h_image);
-			imlib_free_image();
-		}
-	}
+	/* Draw an opaque bar background. */
+	XSetForeground(e->dpy, gc, win->fg.pixel);
+	XFillRectangle(e->dpy, win->buf.pm, gc, 0, win->h_image, win->w_image, win->bar.h);
 
 	XSetForeground(e->dpy, gc, win->bg.pixel);
 	XSetBackground(e->dpy, gc, win->fg.pixel);
