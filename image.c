@@ -361,6 +361,12 @@ CLEANUP void img_close(img_t *img, bool decache)
 			imlib_free_image();
 		img->im = NULL;
 	}
+
+	if (img->multi.frames != NULL) {
+		free(img->multi.frames);
+		img->multi.frames = NULL;
+		img->multi.cap = 0;
+	}
 }
 
 void img_check_pan(img_t *img, bool moved)
