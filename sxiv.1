@@ -3,7 +3,7 @@
 sxiv \- Simple X Image Viewer
 .SH SYNOPSIS
 .B sxiv
-.RB [ \-abcfhiopqrtvZ ]
+.RB [ \-abcfhiopqrRtvZ ]
 .RB [ \-A
 .IR FRAMERATE ]
 .RB [ \-e
@@ -74,7 +74,8 @@ Print brief usage information to standard output and exit.
 Read names of files to open from standard input. Also done if FILE is `-'.
 .TP
 .B \-o
-Write list of all marked files to standard output when quitting. In combination
+Write list of all marked files to standard output when quitting. If no file is
+marked, the current image is written instead. In combination
 with
 .B \-i
 sxiv can be used as a visual filter/pipe.
@@ -87,6 +88,9 @@ Be quiet, disable warnings to standard error stream.
 .TP
 .B \-r
 Search the given directories recursively for images to view.
+.TP
+.B \-R
+Sort the contents of a directory in reverse order.
 .TP
 .BI "\-S " DELAY
 Start in slideshow mode. Set the delay between images to
@@ -129,6 +133,10 @@ Toggle fullscreen mode.
 .TP
 .B b
 Toggle visibility of info bar on bottom of window.
+.TP
+.B B
+Toggle visibility of the secondary status bar, shown below the info bar. It
+displays the image type, its dimensions and the current zoom level.
 .TP
 .B Ctrl-x
 Send the next key to the external key-handler. See section EXTERNAL KEY HANDLER
@@ -359,7 +367,8 @@ General:
 .B Button3
 Switch to thumbnail mode.
 .TP
-Navigate image list:
+Navigate image list: If the image is larger than
+the window, dragging pans the image instead.
 .TP
 .B Button1
 Go to the next image if the mouse cursor is in the right part of the window or
@@ -391,8 +400,8 @@ Color of the window foreground and bar background
 Name of Xft bar font
 .TP
 .B barHeight
-Height of the status bar in pixels. If omitted, the height is calculated from
-the selected font.
+Height of each status bar row in pixels. If omitted, the height is calculated
+from the selected font.
 .TP
 Please see xrdb(1) on how to change them.
 .SH STATUS BAR
@@ -402,6 +411,12 @@ image gets loaded. The path of this script is
 .I $XDG_CONFIG_HOME/sxiv/exec/image-info
 and the arguments given to it are: 1) path to image file, 2) image width,
 3) image height.
+.P
+A secondary status bar, toggled with
+.BR B ,
+can be shown below the info bar. It displays the type, dimensions and current
+zoom level of the displayed image. The window title shows the name of the
+current image together with its position in the file list.
 .P
 There is also an example script installed together with sxiv as
 .IR PREFIX/share/sxiv/exec/image-info .
