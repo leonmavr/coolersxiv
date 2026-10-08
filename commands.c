@@ -352,6 +352,10 @@ bool ci_keys(arg_t _)
 	win.keys_on = !win.keys_on;
 	if (win.keys_on)
 		build_keys_overlay();
+	else
+		/* the overlay is painted into the shared window pixmap, which
+		 * img_render() only repaints while img.dirty is set */
+		img.dirty = true;
 	return true;
 }
 

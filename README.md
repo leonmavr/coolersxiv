@@ -34,6 +34,7 @@ welcome but there is no guarantee that they will be incorporated.
 * View images straight from URLs with `-u URL` (via an external `url-handler` script)
 * Frame counter (`n/total`) left of the zoom level for multi-frame images
 * `Space` pauses/resumes GIF playback (no-op for single-frame images)
+* `?` toggles an on-screen key map of the active key bindings
 
 
 # Screenshots

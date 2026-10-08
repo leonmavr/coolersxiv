@@ -425,6 +425,7 @@ int ptr_third_x(void)
 #define KEYS_MAX 256
 
 static char keyhelp_store[16384];
+static char keyhelp_head[128];
 static const char *keyhelp[KEYS_MAX];
 
 static struct {
@@ -596,7 +597,17 @@ void build_keys_overlay(void)
 		idx[k] = k;
 	qsort(idx, ng, sizeof(idx[0]), kgroup_cmp);
 
-	keyhelp[n++] = "Key map (press k to close)";
+	/* title names whichever key is currently bound to the overlay command */
+	for (k = 0; k < ng; k++) {
+		if (keygroups[k].cmd == i_keys) {
+			snprintf(keyhelp_head, sizeof(keyhelp_head),
+			         "Key map (press %s to close)", keygroups[k].keys);
+			break;
+		}
+	}
+	if (k >= ng)
+		snprintf(keyhelp_head, sizeof(keyhelp_head), "Key map");
+	keyhelp[n++] = keyhelp_head;
 	for (k = 0; k < ng && n < KEYS_MAX - 1; k++) {
 		int gi = idx[k];
 		char lab[48];
