@@ -19,6 +19,7 @@ G_CMD(change_gamma)
 
 I_CMD(navigate)
 I_CMD(cursor_navigate)
+I_CMD(space)
 I_CMD(alternate)
 I_CMD(navigate_frame)
 I_CMD(toggle_animation)

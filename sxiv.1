@@ -259,10 +259,17 @@ The following keyboard commands are only available in image mode:
 .TP
 Navigate image list:
 .TP
-.BR n ", " Space
+.B n
 Go
 .I count
 images forward.
+.TP
+.B Space
+Pause or resume playback when the current image has multiple frames (an
+animation). For all other images it goes
+.I count
+images forward, just like
+.BR n .
 .TP
 .BR p ", " Backspace
 Go
@@ -292,7 +299,9 @@ Go
 frames of a multi-frame image backward.
 .TP
 .B Ctrl-Space
-Play/stop animations of multi-frame images.
+Play/stop animations of multi-frame images. This is the same as pressing
+.BR Space ,
+which also pauses and resumes animations.
 .TP
 Panning:
 .TP
@@ -438,6 +447,9 @@ A secondary status bar, toggled with
 can be shown below the info bar. It displays the type, dimensions and current
 zoom level of the displayed image. The window title shows the name of the
 current image together with its position in the file list.
+.P
+For multi-frame images the status bar also shows the current frame number and
+the total number of frames, just left of the zoom level.
 .P
 There is also an example script installed together with sxiv as
 .IR PREFIX/share/sxiv/exec/image-info .

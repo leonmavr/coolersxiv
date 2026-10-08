@@ -345,6 +345,14 @@ bool ci_toggle_animation(arg_t _)
 	return dirty;
 }
 
+/* Space: pause/play when viewing an animation, otherwise go to next image. */
+bool ci_space(arg_t _)
+{
+	if (img.multi.cnt > 0)
+		return ci_toggle_animation(0);
+	return ci_navigate(+1);
+}
+
 bool ci_scroll(arg_t dir)
 {
 	return img_pan(&img, dir, prefix);

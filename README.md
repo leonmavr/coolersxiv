@@ -31,6 +31,9 @@ welcome but there is no guarantee that they will be incorporated.
 * Reverse directory sorting with `-R`
 * Left-drag to pan zoomed images
 * `-o` outputs the current image when nothing is marked
+* View images straight from URLs with `-u URL` (via an external `url-handler` script)
+* Frame counter (`n/total`) left of the zoom level for multi-frame images
+* `Space` pauses/resumes GIF playback (falls back to next image otherwise)
 
 
 # Screenshots
