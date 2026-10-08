@@ -117,7 +117,7 @@ static const keymap_t keys[] = {
 	{ 0,            XK_Left,          i_scroll,             DIR_LEFT },
 	{ 0,            XK_j,             i_scroll,             DIR_DOWN },
 	{ 0,            XK_Down,          i_scroll,             DIR_DOWN },
-	{ 0,            XK_k,             i_scroll,             DIR_UP },
+	{ 0,            XK_k,             i_keys,               None },
 	{ 0,            XK_Up,            i_scroll,             DIR_UP },
 	{ 0,            XK_l,             i_scroll,             DIR_RIGHT },
 	{ 0,            XK_Right,         i_scroll,             DIR_RIGHT },

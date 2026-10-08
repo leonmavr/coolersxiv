@@ -38,6 +38,7 @@ void slideshow(void);
 void set_timeout(timeout_f, int, bool);
 void reset_timeout(timeout_f);
 bool ci_drag(arg_t);
+void build_keys_overlay(void);
 
 extern appmode_t mode;
 extern img_t img;
@@ -345,12 +346,13 @@ bool ci_toggle_animation(arg_t _)
 	return dirty;
 }
 
-/* Space: pause/play when viewing an animation, otherwise go to next image. */
-bool ci_space(arg_t _)
+/* Toggle the on-screen key map overlay. */
+bool ci_keys(arg_t _)
 {
-	if (img.multi.cnt > 0)
-		return ci_toggle_animation(0);
-	return ci_navigate(+1);
+	win.keys_on = !win.keys_on;
+	if (win.keys_on)
+		build_keys_overlay();
+	return true;
 }
 
 bool ci_scroll(arg_t dir)
@@ -474,11 +476,11 @@ bool ct_reload_all(arg_t _)
 
 
 #undef  G_CMD
-#define G_CMD(c) { -1, cg_##c },
+#define G_CMD(c, d) { -1, cg_##c, d },
 #undef  I_CMD
-#define I_CMD(c) { MODE_IMAGE, ci_##c },
+#define I_CMD(c, d) { MODE_IMAGE, ci_##c, d },
 #undef  T_CMD
-#define T_CMD(c) { MODE_THUMB, ct_##c },
+#define T_CMD(c, d) { MODE_THUMB, ct_##c, d },
 
 const cmd_t cmds[CMD_COUNT] = {
 #include "commands.lst"

@@ -159,9 +159,9 @@ bool arl_handle(arl_t*);
 typedef int arg_t;
 typedef bool (*cmd_f)(arg_t);
 
-#define G_CMD(c) g_##c,
-#define I_CMD(c) i_##c,
-#define T_CMD(c) t_##c,
+#define G_CMD(c, d) g_##c,
+#define I_CMD(c, d) i_##c,
+#define T_CMD(c, d) t_##c,
 
 typedef enum {
 #include "commands.lst"
@@ -171,6 +171,7 @@ typedef enum {
 typedef struct {
 	int mode;
 	cmd_f func;
+	const char *desc; /* human readable, for the key map overlay */
 } cmd_t;
 
 typedef struct {
@@ -439,6 +440,11 @@ struct win {
 		win_bar_t r;
 		win_bar_t l2;
 	} bar;
+
+	/* key map overlay (toggled with the key map command) */
+	bool keys_on;
+	const char *const *keys_lines;
+	int keys_cnt;
 };
 
 extern Atom atoms[ATOM_COUNT];

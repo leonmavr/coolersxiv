@@ -416,6 +416,209 @@ int ptr_third_x(void)
 	return MAX(0, MIN(2, (x / (win.w_image * 0.33))));
 }
 
+/*
+ * Key map overlay: build a cheat sheet of the active key bindings from the
+ * key map in config.h and the command descriptions in commands.lst. The list
+ * is regenerated whenever the overlay is shown, so it always reflects the
+ * current configuration.
+ */
+#define KEYS_MAX 256
+
+static char keyhelp_store[16384];
+static const char *keyhelp[KEYS_MAX];
+
+static struct {
+	cmd_id_t cmd;
+	arg_t arg;
+	char keys[96];
+} keygroups[KEYS_MAX];
+
+static void dir_label(arg_t a, char *out, size_t n)
+{
+	switch (a) {
+		case DIR_LEFT:                snprintf(out, n, "left");         break;
+		case DIR_RIGHT:               snprintf(out, n, "right");        break;
+		case DIR_UP:                  snprintf(out, n, "up");           break;
+		case DIR_DOWN:                snprintf(out, n, "down");         break;
+		case DIR_LEFT | DIR_UP:       snprintf(out, n, "top-left");     break;
+		case DIR_RIGHT | DIR_UP:      snprintf(out, n, "top-right");    break;
+		case DIR_LEFT | DIR_DOWN:     snprintf(out, n, "bottom-left");  break;
+		case DIR_RIGHT | DIR_DOWN:    snprintf(out, n, "bottom-right"); break;
+		default:                      out[0] = '\0';                    break;
+	}
+}
+
+/* Human readable name of a keysym, for the key map overlay. */
+static const char *keyname(KeySym ks)
+{
+	static const struct {
+		KeySym ks;
+		const char *name;
+	} alias[] = {
+		{ XK_space,        "space"     },
+		{ XK_Return,       "Enter"     },
+		{ XK_BackSpace,    "Backspace" },
+		{ XK_Escape,       "Esc"       },
+		{ XK_Tab,          "Tab"       },
+		{ XK_Delete,       "Del"       },
+		{ XK_Insert,       "Ins"       },
+		{ XK_KP_Add,       "KP +"      },
+		{ XK_KP_Subtract,  "KP -"      },
+		{ XK_KP_Multiply,  "KP *"      },
+		{ XK_KP_Divide,    "KP /"      },
+		{ XK_KP_Enter,     "KP Enter"  },
+	};
+	static char buf[2];
+	const char *s;
+	size_t i;
+
+	/* printable ASCII keysyms are nicer shown as the character itself */
+	if (ks > 0x20 && ks < 0x7f) {
+		buf[0] = (char) ks;
+		buf[1] = '\0';
+		return buf;
+	}
+	for (i = 0; i < ARRLEN(alias); i++) {
+		if (alias[i].ks == ks)
+			return alias[i].name;
+	}
+	s = XKeysymToString(ks);
+	return s != NULL ? s : "?";
+}
+
+/* Short suffix describing a command's argument (direction, angle, ...). */
+static void arg_label(cmd_id_t c, arg_t a, char *out, size_t n)
+{
+	out[0] = '\0';
+	switch (c) {
+		case g_scroll_screen:
+		case i_scroll:
+		case i_scroll_to_edge:
+		case t_move_sel:
+			dir_label(a, out, n);
+			break;
+		case g_zoom:
+			snprintf(out, n, "%s", a > 0 ? "in" : "out");
+			break;
+		case i_navigate:
+			if (a == 1 || a == -1)
+				snprintf(out, n, "%s", a > 0 ? "forward" : "backward");
+			else
+				snprintf(out, n, "%d %s", a > 0 ? a : -a,
+				         a > 0 ? "forward" : "backward");
+			break;
+		case i_navigate_frame:
+			if (a == 1 || a == -1)
+				snprintf(out, n, "%s", a > 0 ? "next" : "previous");
+			else
+				snprintf(out, n, "%d frames %s", a > 0 ? a : -a,
+				         a > 0 ? "forward" : "backward");
+			break;
+		case g_navigate_marked:
+			snprintf(out, n, "%s", a > 0 ? "forward" : "backward");
+			break;
+		case i_rotate:
+			switch (a) {
+				case DEGREE_90:  snprintf(out, n, "90 deg clockwise");        break;
+				case DEGREE_180: snprintf(out, n, "180 deg");                 break;
+				case DEGREE_270: snprintf(out, n, "90 deg counter-clockwise"); break;
+			}
+			break;
+		case i_flip:
+			snprintf(out, n, "%s",
+			         a == FLIP_HORIZONTAL ? "horizontally" : "vertically");
+			break;
+		case i_fit_to_win:
+			switch (a) {
+				case SCALE_DOWN:   snprintf(out, n, "down to 100%%");        break;
+				case SCALE_FIT:    snprintf(out, n, "to fit");              break;
+				case SCALE_FILL:   snprintf(out, n, "to fill");             break;
+				case SCALE_WIDTH:  snprintf(out, n, "to window width");     break;
+				case SCALE_HEIGHT: snprintf(out, n, "to window height");    break;
+			}
+			break;
+		default:
+			break;
+	}
+}
+
+static int kgroup_cmp(const void *a, const void *b)
+{
+	int ia = *(const int*) a, ib = *(const int*) b;
+
+	if (keygroups[ia].cmd != keygroups[ib].cmd)
+		return (int) keygroups[ia].cmd - (int) keygroups[ib].cmd;
+	return keygroups[ia].arg - keygroups[ib].arg;
+}
+
+void build_keys_overlay(void)
+{
+	int idx[KEYS_MAX];
+	int ng = 0, i, k, n = 0;
+	size_t off = 0;
+
+	for (i = 0; i < (int) ARRLEN(keys) && ng < KEYS_MAX; i++) {
+		const keymap_t *km = &keys[i];
+		const cmd_t *cm;
+		char kname[48], mods[8] = "";
+		int found = -1;
+
+		if (km->cmd < 0 || km->cmd >= CMD_COUNT)
+			continue;
+		cm = &cmds[km->cmd];
+		if (cm->mode >= 0 && cm->mode != mode)
+			continue; /* binding belongs to the other mode */
+
+		if (km->mask & ControlMask) strncat(mods, "C-", sizeof(mods) - strlen(mods) - 1);
+		if (km->mask & Mod1Mask)    strncat(mods, "M-", sizeof(mods) - strlen(mods) - 1);
+		if (km->mask & ShiftMask)   strncat(mods, "S-", sizeof(mods) - strlen(mods) - 1);
+		snprintf(kname, sizeof(kname), "%s%s", mods, keyname(km->ksym));
+
+		for (k = 0; k < ng; k++) {
+			if (keygroups[k].cmd == km->cmd && keygroups[k].arg == km->arg) {
+				found = k;
+				break;
+			}
+		}
+		if (found < 0) {
+			found = ng++;
+			keygroups[found].cmd = km->cmd;
+			keygroups[found].arg = km->arg;
+			keygroups[found].keys[0] = '\0';
+		}
+		k = strlen(keygroups[found].keys);
+		snprintf(keygroups[found].keys + k, sizeof(keygroups[found].keys) - k,
+		         "%s%s", k ? "/" : "", kname);
+	}
+
+	/* order groups by command (i.e. the order in commands.lst), then by arg */
+	for (k = 0; k < ng; k++)
+		idx[k] = k;
+	qsort(idx, ng, sizeof(idx[0]), kgroup_cmp);
+
+	keyhelp[n++] = "Key map (press k to close)";
+	for (k = 0; k < ng && n < KEYS_MAX - 1; k++) {
+		int gi = idx[k];
+		char lab[48];
+		const char *desc = cmds[keygroups[gi].cmd].desc;
+		int w;
+
+		if (desc == NULL)
+			desc = "";
+		arg_label(keygroups[gi].cmd, keygroups[gi].arg, lab, sizeof(lab));
+		w = snprintf(keyhelp_store + off, sizeof(keyhelp_store) - off,
+		             "%s: %s%s%s", keygroups[gi].keys, desc,
+		             lab[0] ? " " : "", lab);
+		if (w < 0 || (size_t) w >= sizeof(keyhelp_store) - off)
+			break;
+		keyhelp[n++] = keyhelp_store + off;
+		off += (size_t) w + 1;
+	}
+
+	win.keys_lines = keyhelp;
+	win.keys_cnt = n;
+}
+
 void update_title(void)
 {
 	static char last[512];

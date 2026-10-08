@@ -51,6 +51,16 @@ static int fontheight;
 static double fontsize;
 static int barheight;
 
+/* The configured font is often much larger than a full key map needs, so the
+ * overlay uses its own font, shrunk until the whole map fits on screen. */
+static const FcChar8 *fontfamily;
+static XftFont *keysfont;
+static int keysfontheight;
+static double keysfontsize;
+static double keyssize;          /* font size currently chosen for the overlay */
+static double keyssize_base;     /* configured font size it was chosen for */
+static int keyssize_w, keyssize_h; /* geometry it was chosen for */
+
 Atom atoms[ATOM_COUNT];
 
 static unsigned int bar_total(win_t *win)
@@ -60,11 +70,83 @@ static unsigned int bar_total(win_t *win)
 
 void win_init_font(const win_env_t *e, const char *fontstr)
 {
+	FcChar8 *fam = NULL;
+
 	if ((font = XftFontOpenName(e->dpy, e->scr, fontstr)) == NULL)
 		error(EXIT_FAILURE, 0, "Error loading font '%s'", fontstr);
 	fontheight = font->ascent + font->descent;
 	FcPatternGetDouble(font->pattern, FC_SIZE, 0, &fontsize);
+	if (FcPatternGetString(font->pattern, FC_FAMILY, 0, &fam) != FcResultMatch)
+		fam = NULL;
+	fontfamily = fam;
 	barheight = fontheight + 2 * V_TEXT_PAD;
+}
+
+/* (Re)open the overlay font, unless it is already at the requested size. */
+static void keys_init_font(win_env_t *e, double size)
+{
+	XftFont *f;
+
+	if (keysfont != NULL && keysfontsize == size)
+		return;
+	f = XftFontOpen(e->dpy, e->scr, FC_FAMILY, FcTypeString,
+	                fontfamily != NULL ? (const char*) fontfamily : "monospace",
+	                FC_SIZE, FcTypeDouble, size, NULL);
+	if (f == NULL)
+		return;
+	if (keysfont != NULL)
+		XftFontClose(e->dpy, keysfont);
+	keysfont = f;
+	keysfontheight = f->ascent + f->descent;
+	keysfontsize = size;
+}
+
+/* Width of a string in the overlay font. */
+#define TEXTWIDTH(win, text, len) \
+	win_draw_text(win, NULL, NULL, 0, 0, text, len, 0)
+
+int win_draw_text(win_t *win, XftDraw *d, const XftColor *color, int x, int y,
+                  char *text, int len, int w);
+
+static int keys_textw(win_t *win, const char *s)
+{
+	XftFont *of = font;
+	int ofh = fontheight, w;
+
+	font = keysfont;
+	fontheight = keysfontheight;
+	w = TEXTWIDTH(win, (char*) s, strlen(s));
+	font = of;
+	fontheight = ofh;
+	return w;
+}
+
+/* Largest overlay font size at which the key map still fits on screen. */
+static double keys_fit(win_t *win, int totalh)
+{
+	int i, half, avail, wmax;
+	double size;
+
+	half = (win->keys_cnt + 1) / 2;
+	avail = totalh - 4 * V_TEXT_PAD;
+	wmax = (int) win->w_image / 2 - 3 * H_TEXT_PAD;
+
+	for (size = fontsize; size > 5.0; size *= 0.85) {
+		int wl = 0, wr = 0, rows;
+
+		keys_init_font(&win->env, size);
+		if (keysfont == NULL)
+			return 0.0;
+		rows = half * (keysfontheight + 2);
+		for (i = 0; i < half; i++)
+			wl = MAX(wl, keys_textw(win, win->keys_lines[i]));
+		for (i = half; i < win->keys_cnt; i++)
+			wr = MAX(wr, keys_textw(win, win->keys_lines[i]));
+		if (rows <= avail && MAX(wl, wr) <= wmax)
+			return size;
+	}
+	keys_init_font(&win->env, 5.0);
+	return keysfont != NULL ? 5.0 : fontsize;
 }
 
 void win_alloc_color(const win_env_t *e, const char *name, XftColor *col)
@@ -305,6 +387,8 @@ CLEANUP void win_close(win_t *win)
 
 	if (font != NULL)
 		XftFontClose(win->env.dpy, font);
+	if (keysfont != NULL)
+		XftFontClose(win->env.dpy, keysfont);
 
 	XDestroyWindow(win->env.dpy, win->xwin);
 	XCloseDisplay(win->env.dpy);
@@ -405,9 +489,6 @@ void win_clear(win_t *win)
 	}
 }
 
-#define TEXTWIDTH(win, text, len) \
-	win_draw_text(win, NULL, NULL, 0, 0, text, len, 0)
-
 int win_draw_text(win_t *win, XftDraw *d, const XftColor *color, int x, int y,
                   char *text, int len, int w)
 {
@@ -495,10 +576,80 @@ void win_draw_bar(win_t *win)
 	XftDrawDestroy(d);
 }
 
+static void win_draw_keys(win_t *win)
+{
+	win_env_t *e;
+	XftDraw *d;
+	XftFont *of;
+	int ofh, i, half, lineh, x1, x2, y, len, wmax;
+	unsigned int totalh;
+
+	if (!win->keys_on || win->keys_cnt <= 0 || win->keys_lines == NULL)
+		return;
+
+	e = &win->env;
+	totalh = win->h_image + bar_total(win);
+
+	/* Pick the largest font size at which the whole map fits on screen.
+	 * The result only depends on the configured font and the window size,
+	 * so it is cached across redraws. */
+	if (keyssize <= 0 || keyssize_base != fontsize ||
+	    keyssize_w != (int) win->w_image || keyssize_h != (int) totalh)
+	{
+		keyssize = keys_fit(win, totalh);
+		keyssize_base = fontsize;
+		keyssize_w = win->w_image;
+		keyssize_h = totalh;
+	}
+	keys_init_font(e, keyssize);
+	if (keysfont == NULL)
+		return;
+
+	of = font;
+	ofh = fontheight;
+	font = keysfont;
+	fontheight = keysfontheight;
+
+	d = XftDrawCreate(e->dpy, win->buf.pm, DefaultVisual(e->dpy, e->scr),
+	                  DefaultColormap(e->dpy, e->scr));
+
+	/* Dim the whole window; text is drawn on top of this. */
+	XSetForeground(e->dpy, gc, win->fg.pixel);
+	XFillRectangle(e->dpy, win->buf.pm, gc, 0, 0, win->w_image, totalh);
+	XSetForeground(e->dpy, gc, win->bg.pixel);
+	XSetBackground(e->dpy, gc, win->fg.pixel);
+
+	/* First half in the left column, second half in the right one. */
+	half = (win->keys_cnt + 1) / 2;
+	lineh = fontheight + 2;
+	x1 = 2 * H_TEXT_PAD;
+	x2 = (int) win->w_image / 2;
+
+	for (i = 0; i < win->keys_cnt; i++) {
+		int x = i < half ? x1 : x2;
+
+		y = font->ascent + 2 * V_TEXT_PAD + (i < half ? i : i - half) * lineh;
+		if (y > (int) totalh)
+			break;
+		len = strlen(win->keys_lines[i]);
+		wmax = win->w_image - x - 2 * H_TEXT_PAD;
+		win_draw_text(win, d, &win->bg, x, y, (char*) win->keys_lines[i],
+		              len, wmax);
+	}
+
+	XftDrawDestroy(d);
+
+	font = of;
+	fontheight = ofh;
+}
+
 void win_draw(win_t *win)
 {
 	if (bar_total(win) > 0)
 		win_draw_bar(win);
+
+	if (win->keys_on)
+		win_draw_keys(win);
 
 	XSetWindowBackgroundPixmap(win->env.dpy, win->xwin, win->buf.pm);
 	XClearWindow(win->env.dpy, win->xwin);
