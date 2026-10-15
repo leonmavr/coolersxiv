@@ -68,7 +68,7 @@ Install dependencies:
 
 | Ubuntu | Arch |
 |---|---|
-| `sudo apt update && sudo apt install -y build-essential pkg-config libimlib2-dev libx11-dev libxft-dev libfreetype6-dev libfontconfig1-dev libgif-dev libexif-dev` | `sudo pacman -Syu && sudo pacman -S --needed base-devel pkgconf imlib2 libx11 libxft freetype2 fontconfig giflib libexif` |
+| `sudo apt install -y build-essential pkg-config libimlib2-dev libx11-dev libxft-dev libfreetype6-dev libfontconfig1-dev libgif-dev libexif-dev` | `sudo pacman -S --needed base-devel pkgconf imlib2 libx11 libxft freetype2 fontconfig giflib libexif` |
 
 
 # Building
