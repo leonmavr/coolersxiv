@@ -1,4 +1,6 @@
-![sxiv](http://xyb3rt.github.io/sxiv/img/logo.png "sxiv")
+<p align="center">
+  <img src="icon/128x128.png" alt="coolersxiv icon" width="128">
+</p>
 
 **Simple X Image Viewer**
 
@@ -274,4 +276,3 @@ Then, execute `xrdb ~/.Xresources` for the changes to take place.
 *(January 21, 2011)*
 
   * Initial release
-
